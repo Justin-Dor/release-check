@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release Check – test Daily Diary and plates</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 24px; }
+  h1 { font-size: 22pt; margin: 0 0 4px; }
+  h2 { font-size: 16pt; margin: 28px 0 8px; }
+  .note { font-size: 11pt; color: #333; max-width: 720px; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; font-size: 14pt; margin-top: 12px; }
+  th, td { border: 1px solid #000; padding: 10px 8px; text-align: left; }
+  th { background: #eee; }
+  .plates { display: flex; flex-wrap: wrap; gap: 24px; }
+  .plate { background: #FACC15; border: 3px solid #000; border-radius: 10px; padding: 14px 28px; font: 700 54pt/1 "Arial Black", Arial, sans-serif; letter-spacing: 2px; white-space: nowrap; }
+  .plate.front { background: #fff; }
+  .cap { font-size: 11pt; margin-top: 6px; }
+  .vins { display: flex; flex-wrap: wrap; gap: 24px; }
+  .vin { border: 1px dashed #666; padding: 10px; }
+  .page { page-break-after: always; }
+  @media print { .noprint { display: none; } body { margin: 12mm; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Daily Diary — TEST DATA — Page 1 of 3</h1>
+  <div class="note">Site: TEST · Date: (today) · For testing the Release Check app only. The app captures only the Time and Registration columns; the others are ignored.</div>
+  <table>
+    <thead><tr><th>Time</th><th>Customer</th><th>Registration</th><th>Booking ref</th><th>VIN</th></tr></thead>
+    <tbody>
+      <tr><td>08:45</td><td>D. Hughes</td><td>LM70 OPQ</td><td>BK-10419</td><td>TESTVXN00A09TR204</td></tr>
+      <tr><td>09:30</td><td>J. Smith</td><td>AB21 XYZ</td><td>BK-10421</td><td>TESTVXN00A04K8812</td></tr>
+      <tr><td>10:00</td><td>R. Okafor</td><td>BK73 TGH</td><td>BK-10433</td><td>TESTVXN00A07M1046</td></tr>
+      <tr><td>11:15</td><td>A. Kowalski</td><td>YX19 RPL</td><td>BK-10438</td><td>TESTVXN00A03H5521</td></tr>
+      <tr><td>13:00</td><td>S. Begum</td><td>FD24 KLM</td><td>BK-10450</td><td>TESTVXN00A02C7730</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="page">
+  <h1>Daily Diary — TEST DATA — Page 2 of 3</h1>
+  <div class="note">Site: TEST · Date: (today) · For testing the Release Check app only. The app captures only the Time and Registration columns; the others are ignored. Test rows: the 14:45 vehicle repeats one from page 1; the last row is outside site hours.</div>
+  <table>
+    <thead><tr><th>Time</th><th>Customer</th><th>Registration</th><th>Booking ref</th><th>VIN</th></tr></thead>
+    <tbody>
+      <tr><td>13:30</td><td>P. Evans</td><td>GH68 JKL</td><td>BK-10455</td><td>TESTVXN00A05P3318</td></tr>
+      <tr><td>14:15</td><td>L. Chen</td><td>MN20 RST</td><td>BK-10460</td><td>TESTVXN00A08K2207</td></tr>
+      <tr><td>14:45</td><td>J. Smith</td><td>AB21 XYZ</td><td>BK-10421</td><td>TESTVXN00A04K8812</td></tr>
+      <tr><td>15:30</td><td>M. Patel</td><td>WX22 UVB</td><td>BK-10467</td><td>TESTVXN00A01W9954</td></tr>
+      <tr><td>21:40</td><td>T. Ward</td><td>CD71 EFG</td><td>BK-10471</td><td>TESTVXN00A06C4410</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="page">
+  <h1>Daily Diary — TEST DATA — Page 3 of 3</h1>
+  <div class="note">Site: TEST · Date: (today) · For testing the Release Check app only. The app captures only the Time and Registration columns; the others are ignored. Test rows: the second row's time is out of sequence.</div>
+  <table>
+    <thead><tr><th>Time</th><th>Customer</th><th>Registration</th><th>Booking ref</th><th>VIN</th></tr></thead>
+    <tbody>
+      <tr><td>16:00</td><td>K. Byrne</td><td>HJ23 KLM</td><td>BK-10475</td><td>TESTVXN00A09H6621</td></tr>
+      <tr><td>12:10</td><td>F. Ahmed</td><td>NP19 QRS</td><td>BK-10478</td><td>TESTVXN00A02N7735</td></tr>
+      <tr><td>16:30</td><td>G. Lewis</td><td>TU70 VWX</td><td>BK-10480</td><td>TESTVXN00A03T1189</td></tr>
+      <tr><td>17:00</td><td>R. Silva</td><td>EF72 GHJ</td><td>BK-10484</td><td>TESTVXN00A07E5502</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div>
+  <h2>Test number plates</h2>
+  <div class="note">Scan these with "Read plate". PK66 WEB is not on the diary and should give DO NOT RELEASE.</div>
+  <div class="plates">
+    <div><div class="plate">AB21 XYZ</div><div class="cap">On diary → OK TO RELEASE</div></div>
+    <div><div class="plate front">BK73 TGH</div><div class="cap">On diary, white front plate</div></div>
+    <div><div class="plate">PK66 WEB</div><div class="cap">Not on diary → DO NOT RELEASE</div></div>
+    <div><div class="plate">YX19 RPL</div><div class="cap">On diary → OK TO RELEASE</div></div>
+  </div>
+</div>
+
+</body>
+</html>

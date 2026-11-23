@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<title>Release Check</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <button id="backBtn" class="icon-btn" type="button" aria-label="Back" hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <div class="bar-title">
+    <div class="eyebrow">Release Check</div>
+    <div id="screenTitle" class="title">Today</div>
+  </div>
+  <button id="settingsBtn" class="op-chip" type="button" aria-label="Settings">
+    <span id="opName" class="op-name"></span>
+    <span id="opInitials" class="avatar">?</span>
+  </button>
+</header>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<main id="app">
+  <!-- First launch -->
+  <section data-screen="setup" hidden>
+    <div class="card stack">
+      <h2>Welcome</h2>
+      <p>Enter your operator ID (staff or badge number). It is recorded against every check in the audit log. Names are not stored.</p>
+      <label for="setupName">Operator ID</label>
+      <input id="setupName" class="plate-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="e.g. 104582">
+      <button id="setupSave" class="btn primary" type="button">Continue</button>
+    </div>
+    <p class="small">Proof of concept. Everything stays on this phone: nothing is uploaded. Use test data only until the pilot is approved.</p>
+  </section>
+
+  <!-- Home -->
+  <section data-screen="home" hidden><div id="homeBody" class="stack"></div></section>
+
+  <!-- Reading the diary -->
+  <section data-screen="processing" hidden>
+    <div class="processing">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2 id="procTitle">Reading the diary…</h2>
+      <p id="procStatus" class="muted">Preparing image</p>
+      <div class="progress" aria-hidden="true"><div id="procBar"></div></div>
+      <p class="small">The first read downloads the text reader (about 10 MB). Later reads are faster.</p>
+    </div>
+  </section>
+
+  <!-- Review extracted list -->
+  <section data-screen="review" hidden><div id="reviewBody" class="stack"></div></section>
+
+  <!-- Scan plate -->
+  <section data-screen="scan" hidden>
+    <div class="stack">
+      <div class="tabs" role="group" aria-label="How to check">
+        <button type="button" data-action="scan-mode" data-mode="camera" aria-pressed="true">Camera</button>
+        <button type="button" data-action="scan-mode" data-mode="type" aria-pressed="false">Type it</button>
+      </div>
+      <div id="scanCamera" class="stack">
+        <div class="viewfinder">
+          <video id="plateVideo" playsinline muted autoplay></video>
+          <div id="plateGuide" class="guide guide-plate" aria-hidden="true"></div>
+          <button id="torchBtn" class="torch" type="button" aria-pressed="false" hidden>Torch</button>
+        </div>
+        <p id="scanMsg" class="center muted">Fill the frame with the number plate, then tap Read plate.</p>
+        <button id="readPlateBtn" class="btn primary big" type="button" data-action="read-plate">Read plate</button>
+      </div>
+      <div id="scanType" class="card stack" hidden>
+        <label for="typedReg">Registration</label>
+        <input id="typedReg" class="plate-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="10">
+        <button class="btn primary" type="button" data-action="check-typed">Check registration</button>
+        <p class="small">Typed checks are recorded as "typed by operator" in the audit log.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Result -->
+  <section data-screen="result" hidden><div id="resultBody" class="stack"></div></section>
+
+  <!-- VIN scan -->
+  <section data-screen="vin" hidden>
+    <div class="stack">
+      <div class="viewfinder">
+        <video id="vinVideo" playsinline muted autoplay></video>
+        <div class="guide guide-vin" aria-hidden="true"></div>
+      </div>
+      <p id="vinMsg" class="center muted">Point the camera at the VIN barcode on the door pillar or windscreen label.</p>
+      <div class="card stack">
+        <label for="vinTyped">Or type the last 6 characters of the VIN</label>
+        <input id="vinTyped" class="plate-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="6">
+        <button class="btn primary" type="button" data-action="vin-typed">Check VIN</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Supervisor override -->
+  <section data-screen="override" hidden><div id="overrideBody" class="stack"></div></section>
+
+  <!-- Audit log -->
+  <section data-screen="audit" hidden><div id="auditBody" class="stack"></div></section>
+
+  <!-- Settings -->
+  <section data-screen="settings" hidden><div id="settingsBody" class="stack"></div></section>
+</main>
+
+<input id="diaryCamera" type="file" accept="image/*" capture="environment" hidden>
+<input id="diaryPick" type="file" accept="image/*" hidden>
+</body>
+</html>
