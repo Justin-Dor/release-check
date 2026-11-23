@@ -9,4 +9,3 @@ permission of the copyright holder.
 Third-party components are not included in this repository and remain under
 their own licences:
 - Tesseract.js (Apache License 2.0), loaded at runtime from cdn.jsdelivr.net
-- JsBarcode (MIT License), loaded at runtime by sample-diary.html
