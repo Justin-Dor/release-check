@@ -164,3 +164,11 @@ What to measure in the proof of concept:
 - **"Text reader did not load".** The first use needs internet access to cdn.jsdelivr.net, which some company networks block.
 - **The diary reads badly.** Lay the page flat, avoid shadows and glare, and fill the frame. Plain tables with clear print work best. Rows can always be edited or added by hand.
 - **Debugging a plate read.** Add `#debug` to the address. The prepared image and text of each attempt are kept in `window.__rcDebug`.
+
+---
+
+## Copyright
+
+© 2026 Justin Akuagwu. All rights reserved.
+
+Shared for portfolio viewing only; no licence is granted to copy, modify or use this code. See [NOTICE](NOTICE) for details and third-party components.

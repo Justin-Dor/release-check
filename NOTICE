@@ -1,0 +1,12 @@
+Release Check
+Copyright (c) 2026 Justin Akuagwu. All rights reserved.
+
+This repository is shared publicly for portfolio viewing only.
+No licence is granted to copy, modify, distribute, or use this code or its
+documentation, in whole or in part, for any purpose, without the prior written
+permission of the copyright holder.
+
+Third-party components are not included in this repository and remain under
+their own licences:
+- Tesseract.js (Apache License 2.0), loaded at runtime from cdn.jsdelivr.net
+- JsBarcode (MIT License), loaded at runtime by sample-diary.html
