@@ -1,4 +1,4 @@
-# Release Check – proof of concept v1.3 (Route 2: installable web app)
+# Release Check – proof of concept v1.4 (Route 2: installable web app)
 
 **This version captures only the collection Time and the Registration from the Daily Diary.** Every other column (customer, booking ref, VIN and so on) is ignored. Because the VIN is not captured, the VIN check is switched off in this version.
 
@@ -105,9 +105,11 @@ What to measure in the proof of concept:
 | Plate exactly matches a diary entry, read confidence ≥ threshold (default 85%), not yet released | **OK TO RELEASE**, then collector check before handover |
 | Plate matches but the camera read is below the threshold, or characters were auto-corrected | **MANUAL CHECK** |
 | No exact match, but one character away from a diary entry (e.g. 0/O, 1/I, 8/B) | **MANUAL CHECK**, with a "did you mean" option |
+| The read breaks UK plate rules (e.g. `KP76 MIX`: I and Q are never used in the last three letters; I, Q and Z never in the first two) and a diary entry is one character away | **MANUAL CHECK**, saying the read is impossible and naming the closest diary entry |
 | Not on the diary | **DO NOT RELEASE** |
 | Already handed over today | **ALREADY RELEASED** |
 
+- **v1.4 (plate-letter rule):** a camera read that breaks the UK plate rules is treated as a misread. The app ranks it below valid reads, tries two extra reading passes at a larger size, and flags such rows on the diary review screen. It still never releases on a guess: the operator must confirm by eye.
 - **MANUAL CHECK:** the operator can confirm the plate by eye, which is logged. The vehicle then goes through the normal collector check.
 - **DO NOT RELEASE:** only a supervisor override, with name and reason, releases the vehicle.
 - **Settings** (tap your ID, top right): operator ID, confidence threshold, site opening and closing times, and plate photos.

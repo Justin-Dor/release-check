@@ -22,9 +22,19 @@ const PREFIX_RE = /^[A-Z]\d{1,3}[A-Z]{3}$/;            // A123 BCD
 const SUFFIX_RE = /^[A-Z]{3}\d{1,3}[A-Z]$/;            // ABC 123D
 const NI_RE = /^[A-Z]{3}\d{1,4}$/;                     // ABZ 1234 (accepted when typed, not auto-detected)
 
+// DVLA rules for current-format plates (2001 onwards): the two-letter memory tag
+// never uses I, Q or Z, and the three random letters never use I or Q.
+// A read that breaks these rules cannot be a real plate, so it was misread.
+function impossibleCurrent(n) {
+  n = cleanReg(n);
+  if (!CURRENT_RE.test(n)) return false;
+  return /[IQZ]/.test(n.slice(0, 2)) || /[IQ]/.test(n.slice(4));
+}
+
 function isValidReg(n) {
   n = cleanReg(n);
-  return CURRENT_RE.test(n) || PREFIX_RE.test(n) || SUFFIX_RE.test(n) || NI_RE.test(n);
+  if (CURRENT_RE.test(n)) return !impossibleCurrent(n);
+  return PREFIX_RE.test(n) || SUFFIX_RE.test(n) || NI_RE.test(n);
 }
 
 function formatReg(s) {
@@ -112,7 +122,7 @@ function evaluateScan(scan, entries, releasedItems, threshold) {
     const m = cleanReg(e.reg);
     return canonical(m) === canonical(n) || levenshtein(m, n) <= 1;
   });
-  if (near.length) return { kind: 'check', entry: null, reason: 'near', near: near.map((e) => e.reg) };
+  if (near.length) return { kind: 'check', entry: null, reason: 'near', near: near.map((e) => e.reg), impossible: impossibleCurrent(n) };
   return { kind: 'stop', entry: null, reason: 'missing' };
 }
 
@@ -220,7 +230,7 @@ function shouldSavePhoto(mode, kind, isOverride) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { cleanReg, isValidReg, formatReg, fixCurrent, findRegCandidates, canonical, levenshtein, evaluateScan, parseDiaryLines, normTime, toMin, timeOrderFlags, MAX_PAGES, normOperatorId, PHOTO_MODES, shouldSavePhoto, extractVin, csvCell };
+  module.exports = { cleanReg, isValidReg, impossibleCurrent, formatReg, fixCurrent, findRegCandidates, canonical, levenshtein, evaluateScan, parseDiaryLines, normTime, toMin, timeOrderFlags, MAX_PAGES, normOperatorId, PHOTO_MODES, shouldSavePhoto, extractVin, csvCell };
 }
 
 /* =====================================================================
@@ -639,7 +649,8 @@ if (typeof document !== 'undefined') (function main() {
       rows.forEach((e, i) => {
         const why = [];
         if (!e.edited && !e.manual && !e.carried) {
-          if (!isValidReg(e.reg)) why.push('Not a standard UK registration format.');
+          if (impossibleCurrent(e.reg)) why.push('Not a real UK registration: I and Q are never used in the last three letters (I, Q and Z never in the first two). Likely misread.');
+          else if (!isValidReg(e.reg)) why.push('Not a standard UK registration format.');
           if (e.corrected) why.push('Some registration characters were corrected automatically.');
           else if (e.conf < S.settings.threshold) why.push('Low read confidence on the registration (' + e.conf + '%).');
           if (!e.time) why.push('No collection time was read. Type it in, or confirm the row has none.');
@@ -792,14 +803,17 @@ if (typeof document !== 'undefined') (function main() {
       const targetW = Math.min(1200, Math.max(600, sw * 2));
       // Raw-line mode copes best with the plate border; no character whitelist
       // (it zeroes Tesseract's confidence scores). Fall back to other modes.
-      const passes = [['13', false], ['8', false], ['13', true], ['7', true]];
+      // [page mode, black/white, scale]. The last two passes run only if the
+      // earlier ones found nothing usable on today's diary.
+      const passes = [['13', false, 1], ['8', false, 1], ['13', true, 1], ['7', true, 1], ['13', false, 1.5], ['8', true, 1.5]];
       // Collect candidates from every pass, then prefer: on today's diary,
       // current-format plates (2001+), higher confidence.
       const diaryRegs = new Set(S.diary.entries.map((e) => cleanReg(e.reg)));
       const all = [];
       let rawText = '';
-      for (const [psm, bin] of passes) {
-        const prepared = prepare(frame, sx, sy, sw, sh, targetW, bin);
+      for (const [psm, bin, scale] of passes) {
+        if (scale > 1 && all.some((c) => c.inDiary)) break;
+        const prepared = prepare(frame, sx, sy, sw, sh, Math.min(1800, targetW * scale), bin);
         const res = await ocr(prepared, { tessedit_pageseg_mode: psm, tessedit_char_whitelist: '' });
         rawText = rawText || res.text;
         if (location.hash === '#debug') (window.__rcDebug = window.__rcDebug || []).push({ img: prepared.toDataURL(), text: res.text, region: { sx, sy, sw, sh } });
@@ -811,11 +825,11 @@ if (typeof document !== 'undefined') (function main() {
           const regChars = cleanReg(c.raw);
           const ws = words.filter((w) => { const t = cleanReg(w.text); return t.length >= 2 && regChars.includes(t); });
           const conf = Math.round(ws.length ? Math.min(...ws.map((w) => w.confidence)) : (res.lines[0] ? res.lines[0].confidence : 0));
-          all.push({ reg: c.reg, conf, corrections: c.corrections, inDiary: diaryRegs.has(c.reg), current: CURRENT_RE.test(c.reg) });
+          all.push({ reg: c.reg, conf, corrections: c.corrections, inDiary: diaryRegs.has(c.reg), current: CURRENT_RE.test(c.reg), possible: !impossibleCurrent(c.reg) });
         }
         if (all.some((c) => c.inDiary && c.conf >= S.settings.threshold && !c.corrections)) break;
       }
-      all.sort((a, b) => (b.inDiary - a.inDiary) || (b.current - a.current) || (b.conf - a.conf));
+      all.sort((a, b) => (b.inDiary - a.inDiary) || (b.possible - a.possible) || (b.current - a.current) || (b.conf - a.conf));
       const best = all[0] ? { reg: formatReg(all[0].reg), conf: all[0].conf, corrections: all[0].corrections } : null;
       if (!best) {
         $('#scanMsg').textContent = 'Could not read a registration' + (rawText.trim() ? ' (read "' + rawText.trim().slice(0, 20) + '")' : '') + '. Move closer, avoid glare, or use "Type it".';
@@ -888,6 +902,7 @@ if (typeof document !== 'undefined') (function main() {
     if (r.kind === 'ok') msg = r.vin.status === 'pass' || r.vin.status === 'notrequired' ? 'Matched with today’s Daily Diary' + (r.entry.time ? ' (collection ' + r.entry.time + ')' : '') + '. Verify the collector before handing over the keys.' : 'Registration matched. Check the VIN before handing over.';
     else if (r.kind === 'released') msg = `This vehicle was handed over at ${r.released.at} by ${r.released.by}. Do not release it again.`;
     else if (r.reason === 'vin') msg = 'Plate and VIN do not belong to the same booking. Possible wrong or swapped plate.';
+    else if (r.reason === 'near' && r.impossible) msg = r.scan.reg + ' cannot be a real UK plate (I and Q are never used in the last three letters; I, Q and Z never in the first two), so it was misread. Closest on today\u2019s diary: ' + r.near.join(', ') + '. Check the plate by eye.';
     else if (r.reason === 'near') msg = 'No exact match. Check the plate by eye: it may have been misread.';
     else if (r.reason === 'low') msg = `Read confidence is below ${S.settings.threshold}%. Check the plate by eye.`;
     else msg = 'Registration not found in today’s Daily Diary. Verify the booking or contact a supervisor.'
@@ -1112,7 +1127,7 @@ if (typeof document !== 'undefined') (function main() {
         <p class="small">Diary: ${S.diary ? esc(S.diary.date) + ', ' + S.diary.entries.length + ' vehicles' : 'none'} · Audit log: ${S.log.length} entries</p>
         <button class="btn danger" type="button" data-action="reset-all">Delete all data on this phone</button>
       </div>
-      <p class="small">Release Check proof of concept v1.3: diary capture reads collection time and registration only, up to 3 pages; operator IDs instead of names; plate photo setting. Text reading: Tesseract.js (runs on the phone). Nothing is uploaded.</p>`;
+      <p class="small">Release Check proof of concept v1.4: diary capture reads collection time and registration only, up to 3 pages; operator IDs instead of names; plate photo setting. Text reading: Tesseract.js (runs on the phone). Nothing is uploaded.</p>`;
   }
 
   /* ---------- Actions ---------- */
