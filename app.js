@@ -134,31 +134,81 @@ function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
  * time and the registration; every other column on the diary is ignored.
  * lines: [{ text, confidence, words: [{ text, confidence }] }]
  */
+/**
+ * Turn OCR lines into diary rows. Each row uses the FIRST registration printed
+ * on it (the top line of the registration cell, or the leftmost on a line).
+ * Any further registrations on the same row are kept in `alt` so the review
+ * screen can show them, but they are not added to the release list.
+ * A line holding only a registration (a second line in the registration
+ * cell) joins the nearest full row directly above or below it, if the OCR
+ * positions show it is close enough to be in the same cell.
+ */
 function parseDiaryLines(lines) {
-  const byReg = new Map();
+  const items = [];
   for (const line of lines) {
     // Join characters split by stray punctuation ("Ki.M" -> "KiM"), but keep times like 09.30.
     const text = String(line.text || '').replace(/(?<=[A-Za-z])[.,`](?=[A-Za-z0-9])|(?<=\d)[.,`](?=[A-Za-z])/g, '');
     const up = text.toUpperCase();
-    const cands = findRegCandidates(up);
-    if (!cands.length) continue;
+    const norm = up.replace(/[^A-Z0-9\s]/g, ' ');
     const time = ((up.match(TIME_RE) || [])[0] || '').replace('.', ':');
-    for (const c of cands) {
-      let conf = typeof line.confidence === 'number' ? line.confidence : 0;
-      const regChars = cleanReg(c.raw);
-      const ws = (line.words || []).filter((w) => {
-        const t = cleanReg(w.text);
-        return t.length >= 2 && regChars.includes(t);
-      });
-      if (ws.length) conf = Math.min(...ws.map((w) => w.confidence));
-      if (c.corrections > 0) conf = Math.min(conf, 70);
-      conf = Math.round(Math.max(0, Math.min(100, conf)));
-      const tWord = time ? (line.words || []).find((w) => TIME_RE.test(String(w.text || '').toUpperCase())) : null;
-      const timeConf = Math.round(tWord ? tWord.confidence : (typeof line.confidence === 'number' ? line.confidence : 0));
-      const e = { reg: formatReg(c.reg), time: cands.length === 1 ? normTime(time) : '', timeConf, conf, corrected: c.corrections > 0 };
-      const prev = byReg.get(c.reg);
-      if (!prev || prev.conf < e.conf) byReg.set(c.reg, e);
-    }
+    const cands = findRegCandidates(up)
+      .map((c) => Object.assign({ at: norm.indexOf(c.raw) }, c))
+      .sort((a, b) => (a.at - b.at) || (a.corrections - b.corrections));
+    // Two candidates from the same characters (e.g. lookalike fixes) keep the first only.
+    const regs = [];
+    for (const c of cands) if (!regs.some((r) => r.at === c.at)) regs.push(c);
+    if (!regs.length && !time) continue;
+    const tWord = time ? (line.words || []).find((w) => TIME_RE.test(String(w.text || '').toUpperCase())) : null;
+    const timeConf = Math.round(tWord ? tWord.confidence : (typeof line.confidence === 'number' ? line.confidence : 0));
+    // A second line inside the registration cell holds just a registration;
+    // a real diary row also has other columns (customer, booking ref...).
+    let rest = norm;
+    for (const r of regs) rest = rest.replace(r.raw, ' ');
+    rest = rest.replace(/\b([01]?\d|2[0-3]) ?[0-5]\d\b/, ' ').replace(/\s+/g, '');
+    items.push({ line, regs, time: normTime(time), timeConf, box: line.bbox || null, regOnly: rest.length <= 3 });
+  }
+  const hs = items.filter((i) => i.box).map((i) => i.box.y1 - i.box.y0).sort((a, b) => a - b);
+  const lineH = hs.length ? hs[Math.floor(hs.length / 2)] : 0;
+  // Anchors are full diary lines (other columns, or a time). A line holding only
+  // a registration joins the nearest anchor directly above or below it, if it is
+  // close enough to be part of the same table cell.
+  const isAnchor = (it) => !it.regOnly || !!it.time;
+  const gap = (upper, lower) => (upper.box && lower.box && lineH) ? lower.box.y0 - upper.box.y1 : Infinity;
+  const near = 0.6 * lineH;
+  const owner = items.map((it, i) => {
+    if (isAnchor(it)) return i;
+    const up = i > 0 && isAnchor(items[i - 1]) ? gap(items[i - 1], it) : Infinity;
+    const down = i < items.length - 1 && isAnchor(items[i + 1]) ? gap(it, items[i + 1]) : Infinity;
+    if (Math.min(up, down) >= near) return i; // stands alone as its own row
+    return up <= down ? i - 1 : i + 1;
+  });
+  const groups = new Map();
+  items.forEach((it, i) => { const o = owner[i]; if (!groups.has(o)) groups.set(o, []); groups.get(o).push(it); });
+  const rows = [];
+  for (const [, its] of [...groups.entries()].sort((x, y) => x[0] - y[0])) {
+    const regs = its.flatMap((it) => it.regs.map((c) => ({ c, line: it.line })));
+    if (!regs.length) continue; // a stray time with no registration
+    const times = [...new Set(its.map((it) => it.time).filter(Boolean))];
+    const tIt = its.find((it) => it.time);
+    rows.push({ regs, time: times.length === 1 ? times[0] : '', timeConf: tIt ? tIt.timeConf : 0 });
+  }
+  const byReg = new Map();
+  for (const r of rows) {
+    const { c, line } = r.regs[0];
+    let conf = typeof line.confidence === 'number' ? line.confidence : 0;
+    const regChars = cleanReg(c.raw);
+    const ws = (line.words || []).filter((w) => {
+      const t = cleanReg(w.text);
+      return t.length >= 2 && regChars.includes(t);
+    });
+    if (ws.length) conf = Math.min(...ws.map((w) => w.confidence));
+    if (c.corrections > 0) conf = Math.min(conf, 70);
+    conf = Math.round(Math.max(0, Math.min(100, conf)));
+    const alt = [...new Set(r.regs.slice(1).map((x) => formatReg(x.c.reg)).filter((g) => cleanReg(g) !== c.reg))];
+    const e = { reg: formatReg(c.reg), time: r.time, timeConf: r.timeConf, conf, corrected: c.corrections > 0 };
+    if (alt.length) e.alt = alt;
+    const prev = byReg.get(c.reg);
+    if (!prev || prev.conf < e.conf) byReg.set(c.reg, e);
   }
   return [...byReg.values()]; // kept in the order printed on the diary
 }
@@ -525,10 +575,10 @@ if (typeof document !== 'undefined') (function main() {
     const lines = [];
     if (data.blocks && data.blocks.length) {
       for (const b of data.blocks) for (const p of (b.paragraphs || [])) for (const l of (p.lines || [])) {
-        lines.push({ text: l.text, confidence: l.confidence, words: (l.words || []).map((w) => ({ text: w.text, confidence: w.confidence })) });
+        lines.push({ text: l.text, confidence: l.confidence, bbox: l.bbox || null, words: (l.words || []).map((w) => ({ text: w.text, confidence: w.confidence })) });
       }
     } else if (data.lines && data.lines.length) {
-      for (const l of data.lines) lines.push({ text: l.text, confidence: l.confidence, words: (l.words || []).map((w) => ({ text: w.text, confidence: w.confidence })) });
+      for (const l of data.lines) lines.push({ text: l.text, confidence: l.confidence, bbox: l.bbox || null, words: (l.words || []).map((w) => ({ text: w.text, confidence: w.confidence })) });
     } else {
       for (const t of String(data.text || '').split('\n')) if (t.trim()) lines.push({ text: t, confidence: data.confidence || 0, words: [] });
     }
@@ -653,6 +703,7 @@ if (typeof document !== 'undefined') (function main() {
           else if (!isValidReg(e.reg)) why.push('Not a standard UK registration format.');
           if (e.corrected) why.push('Some registration characters were corrected automatically.');
           else if (e.conf < S.settings.threshold) why.push('Low read confidence on the registration (' + e.conf + '%).');
+          if (e.alt && e.alt.length) why.push('This row also shows ' + e.alt.join(', ') + '. Only the first registration (' + e.reg + ') is used. Check it is the vehicle being collected.');
           if (!e.time) why.push('No collection time was read. Type it in, or confirm the row has none.');
           else {
             if (e.timeConf < S.settings.threshold) why.push('Low read confidence on the time (' + e.timeConf + '%).');
@@ -1127,7 +1178,7 @@ if (typeof document !== 'undefined') (function main() {
         <p class="small">Diary: ${S.diary ? esc(S.diary.date) + ', ' + S.diary.entries.length + ' vehicles' : 'none'} · Audit log: ${S.log.length} entries</p>
         <button class="btn danger" type="button" data-action="reset-all">Delete all data on this phone</button>
       </div>
-      <p class="small">Release Check proof of concept v1.4: diary capture reads collection time and registration only, up to 3 pages; operator IDs instead of names; plate photo setting. Text reading: Tesseract.js (runs on the phone). Nothing is uploaded.</p>`;
+      <p class="small">Release Check proof of concept v1.5: diary capture reads collection time and registration only, up to 3 pages; operator IDs instead of names; plate photo setting. Text reading: Tesseract.js (runs on the phone). Nothing is uploaded.</p>`;
   }
 
   /* ---------- Actions ---------- */

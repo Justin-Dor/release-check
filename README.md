@@ -1,4 +1,4 @@
-# Release Check – proof of concept v1.4 (Route 2: installable web app)
+# Release Check – proof of concept v1.5 (Route 2: installable web app)
 
 **This version captures only the collection Time and the Registration from the Daily Diary.** Every other column (customer, booking ref, VIN and so on) is ignored. Because the VIN is not captured, the VIN check is switched off in this version.
 
@@ -109,6 +109,7 @@ What to measure in the proof of concept:
 | Not on the diary | **DO NOT RELEASE** |
 | Already handed over today | **ALREADY RELEASED** |
 
+- **v1.5 (first registration per row):** when a diary row shows more than one registration (two lines in the registration cell, or two on one line), only the FIRST (top or leftmost) is added to the list. The row is flagged on the review screen, naming the registration that was left out, so the operator confirms it against the paper diary.
 - **v1.4 (plate-letter rule):** a camera read that breaks the UK plate rules is treated as a misread. The app ranks it below valid reads, tries two extra reading passes at a larger size, and flags such rows on the diary review screen. It still never releases on a guess: the operator must confirm by eye.
 - **MANUAL CHECK:** the operator can confirm the plate by eye, which is logged. The vehicle then goes through the normal collector check.
 - **DO NOT RELEASE:** only a supervisor override, with name and reason, releases the vehicle.

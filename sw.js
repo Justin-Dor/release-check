@@ -1,5 +1,5 @@
 // Release Check service worker: caches the app so it opens fast and works with a weak signal.
-const VERSION = 'release-check-v1-4';
+const VERSION = 'release-check-v1-5';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'
