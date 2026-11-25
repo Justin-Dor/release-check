@@ -65,6 +65,8 @@ function fixCurrent(raw) {
       else return null;
     }
   }
+  // The memory tag (first two letters) never uses I; OCR usually turns J into I.
+  for (const i of [0, 1]) if (out[i] === 'I') { out = out.slice(0, i) + 'J' + out.slice(i + 1); fixes++; }
   if (fixes > 2 || realDigits < 1 || realLetters < 3) return null;
   return { reg: out, corrections: fixes };
 }
@@ -157,7 +159,15 @@ function parseDiaryLines(lines) {
     // Two candidates from the same characters (e.g. lookalike fixes) keep the first only.
     const regs = [];
     for (const c of cands) if (!regs.some((r) => r.at === c.at)) regs.push(c);
-    if (!regs.length && !time) continue;
+    // A registration-shaped chunk that did not parse (e.g. a badly read top line).
+    let unreadReg = false;
+    if (!regs.length) {
+      const toks = norm.replace(/\b([01]?\d|2[0-3]) ?[0-5]\d\b/, ' ').split(/\s+/).filter(Boolean);
+      for (let i = 0; i < toks.length && !unreadReg; i++) for (const chunk of [toks[i], toks[i] + (toks[i + 1] || '')]) {
+        if (/^[A-Z0-9]{5,8}$/.test(chunk) && /\d/.test(chunk) && !/\d{5}/.test(chunk) && (chunk.match(/[A-Z]/g) || []).length >= 2) { unreadReg = true; break; }
+      }
+    }
+    if (!regs.length && !time && !unreadReg) continue;
     const tWord = time ? (line.words || []).find((w) => TIME_RE.test(String(w.text || '').toUpperCase())) : null;
     const timeConf = Math.round(tWord ? tWord.confidence : (typeof line.confidence === 'number' ? line.confidence : 0));
     // A second line inside the registration cell holds just a registration;
@@ -165,7 +175,7 @@ function parseDiaryLines(lines) {
     let rest = norm;
     for (const r of regs) rest = rest.replace(r.raw, ' ');
     rest = rest.replace(/\b([01]?\d|2[0-3]) ?[0-5]\d\b/, ' ').replace(/\s+/g, '');
-    items.push({ line, regs, time: normTime(time), timeConf, box: line.bbox || null, regOnly: rest.length <= 3 });
+    items.push({ line, regs, time: normTime(time), timeConf, box: line.bbox || null, regOnly: rest.length <= 3 || (unreadReg && rest.replace(/[A-Z0-9]{5,8}/, '').length <= 3), unreadReg });
   }
   const hs = items.filter((i) => i.box).map((i) => i.box.y1 - i.box.y0).sort((a, b) => a - b);
   const lineH = hs.length ? hs[Math.floor(hs.length / 2)] : 0;
@@ -173,27 +183,49 @@ function parseDiaryLines(lines) {
   // a registration joins the nearest anchor directly above or below it, if it is
   // close enough to be part of the same table cell.
   const isAnchor = (it) => !it.regOnly || !!it.time;
-  const gap = (upper, lower) => (upper.box && lower.box && lineH) ? lower.box.y0 - upper.box.y1 : Infinity;
   const near = 0.6 * lineH;
+  // Vertical distance between two lines (0 when they overlap on the page).
+  const dist = (x, y) => (x.box && y.box && lineH) ? Math.max(0, Math.max(x.box.y0, y.box.y0) - Math.min(x.box.y1, y.box.y1)) : Infinity;
   const owner = items.map((it, i) => {
     if (isAnchor(it)) return i;
-    const up = i > 0 && isAnchor(items[i - 1]) ? gap(items[i - 1], it) : Infinity;
-    const down = i < items.length - 1 && isAnchor(items[i + 1]) ? gap(it, items[i + 1]) : Infinity;
-    if (Math.min(up, down) >= near) return i; // stands alone as its own row
-    return up <= down ? i - 1 : i + 1;
+    // OCR may read table columns separately, so look at every full line on the
+    // page, not just the neighbours in reading order.
+    let best = -1, bestD = Infinity;
+    items.forEach((o, j) => {
+      if (j === i || !isAnchor(o)) return;
+      const dd = dist(it, o);
+      if (dd < bestD || (dd === bestD && best >= 0 && Math.abs(o.box.y0 - it.box.y0) < Math.abs(items[best].box.y0 - it.box.y0))) { best = j; bestD = dd; }
+    });
+    return bestD < near ? best : i; // otherwise it stands alone as its own row
   });
   const groups = new Map();
   items.forEach((it, i) => { const o = owner[i]; if (!groups.has(o)) groups.set(o, []); groups.get(o).push(it); });
+  const top = (its) => Math.min(...its.map((it) => it.box ? it.box.y0 : Infinity));
+  const ordered = [...groups.entries()].map(([k, its]) => {
+    // Top line first; lines starting at about the same height go left to right.
+    const sorted = its.every((it) => it.box)
+      ? its.slice().sort((x, y) => Math.abs(x.box.y0 - y.box.y0) > 4 ? x.box.y0 - y.box.y0 : x.box.x0 - y.box.x0) : its;
+    return [k, sorted];
+  }).sort((x, y) => (top(x[1]) - top(y[1])) || (x[0] - y[0]));
   const rows = [];
-  for (const [, its] of [...groups.entries()].sort((x, y) => x[0] - y[0])) {
+  for (const [, its] of ordered) {
     const regs = its.flatMap((it) => it.regs.map((c) => ({ c, line: it.line })));
     if (!regs.length) continue; // a stray time with no registration
+    // The first line of the row had no readable registration: do NOT use the
+    // second line's registration in its place. Leave it blank to be typed in.
+    const topUnread = !its[0].regs.length && (its[0].regOnly === false || its[0].unreadReg) && its.length > 1;
     const times = [...new Set(its.map((it) => it.time).filter(Boolean))];
     const tIt = its.find((it) => it.time);
-    rows.push({ regs, time: times.length === 1 ? times[0] : '', timeConf: tIt ? tIt.timeConf : 0 });
+    rows.push({ regs, time: times.length === 1 ? times[0] : '', timeConf: tIt ? tIt.timeConf : 0, topUnread });
   }
   const byReg = new Map();
+  let blank = 0;
   for (const r of rows) {
+    if (r.topUnread) {
+      byReg.set('?' + (blank++), { reg: '', time: r.time, timeConf: r.timeConf, conf: 0, corrected: false,
+        unread: true, alt: [...new Set(r.regs.map((x) => formatReg(x.c.reg)))] });
+      continue;
+    }
     const { c, line } = r.regs[0];
     let conf = typeof line.confidence === 'number' ? line.confidence : 0;
     const regChars = cleanReg(c.raw);
@@ -699,11 +731,13 @@ if (typeof document !== 'undefined') (function main() {
       rows.forEach((e, i) => {
         const why = [];
         if (!e.edited && !e.manual && !e.carried) {
-          if (impossibleCurrent(e.reg)) why.push('Not a real UK registration: I and Q are never used in the last three letters (I, Q and Z never in the first two). Likely misread.');
+          if (e.unread) { /* explained below */ }
+          else if (impossibleCurrent(e.reg)) why.push('Not a real UK registration: I and Q are never used in the last three letters (I, Q and Z never in the first two). Likely misread.');
           else if (!isValidReg(e.reg)) why.push('Not a standard UK registration format.');
           if (e.corrected) why.push('Some registration characters were corrected automatically.');
-          else if (e.conf < S.settings.threshold) why.push('Low read confidence on the registration (' + e.conf + '%).');
-          if (e.alt && e.alt.length) why.push('This row also shows ' + e.alt.join(', ') + '. Only the first registration (' + e.reg + ') is used. Check it is the vehicle being collected.');
+          else if (!e.unread && e.conf < S.settings.threshold) why.push('Low read confidence on the registration (' + e.conf + '%).');
+          if (e.unread) why.push('The first registration on this row could not be read. Type it from the paper diary. (The second line shows ' + e.alt.join(', ') + ', which is not used.)');
+          else if (e.alt && e.alt.length) why.push('This row also shows ' + e.alt.join(', ') + '. Only the first registration (' + e.reg + ') is used. Check it is the vehicle being collected.');
           if (!e.time) why.push('No collection time was read. Type it in, or confirm the row has none.');
           else {
             if (e.timeConf < S.settings.threshold) why.push('Low read confidence on the time (' + e.timeConf + '%).');
@@ -1178,7 +1212,7 @@ if (typeof document !== 'undefined') (function main() {
         <p class="small">Diary: ${S.diary ? esc(S.diary.date) + ', ' + S.diary.entries.length + ' vehicles' : 'none'} · Audit log: ${S.log.length} entries</p>
         <button class="btn danger" type="button" data-action="reset-all">Delete all data on this phone</button>
       </div>
-      <p class="small">Release Check proof of concept v1.5: diary capture reads collection time and registration only, up to 3 pages; operator IDs instead of names; plate photo setting. Text reading: Tesseract.js (runs on the phone). Nothing is uploaded.</p>`;
+      <p class="small">Release Check proof of concept v1.6: diary capture reads collection time and registration only, up to 3 pages; operator IDs instead of names; plate photo setting. Text reading: Tesseract.js (runs on the phone). Nothing is uploaded.</p>`;
   }
 
   /* ---------- Actions ---------- */
